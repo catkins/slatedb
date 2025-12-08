@@ -30,7 +30,6 @@ impl Iterator {
     /// Returns [key, value] as an array, or nil if iteration is complete.
     pub fn next_entry(&self) -> Result<Option<(String, String)>, Error> {
         let inner = self.inner.clone();
-        
 
         let result = block_on(async {
             let mut guard = inner.lock().await;
@@ -54,7 +53,6 @@ impl Iterator {
     /// Returns [key, value] as byte arrays, or nil if iteration is complete.
     pub fn next_entry_bytes(&self) -> Result<Option<(Vec<u8>, Vec<u8>)>, Error> {
         let inner = self.inner.clone();
-        
 
         let result = block_on(async {
             let mut guard = inner.lock().await;
@@ -77,7 +75,6 @@ impl Iterator {
         }
 
         let inner = self.inner.clone();
-        
 
         block_on(async {
             let mut guard = inner.lock().await;
@@ -94,7 +91,6 @@ impl Iterator {
     /// Close the iterator and release resources.
     pub fn close(&self) -> Result<(), Error> {
         let inner = self.inner.clone();
-        
 
         block_on(async {
             let mut guard = inner.lock().await;
