@@ -1,0 +1,23 @@
+[package]
+name = "slatedb_ext"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "Ruby bindings for SlateDB"
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+# Explicitly not part of the parent workspace
+[workspace]
+
+[dependencies]
+slatedb = { path = "../../../slatedb" }
+magnus = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+bytes = "1"
+object_store = "0.12"
+once_cell = "1"
+log = "0.4"

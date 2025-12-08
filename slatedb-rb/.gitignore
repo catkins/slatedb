@@ -1,0 +1,44 @@
+# Rust build artifacts
+/ext/slatedb_ext/target/
+/target/
+
+# Generated Makefile and compiled extension
+/ext/slatedb_ext/Makefile
+/ext/slatedb_ext/*.bundle
+/ext/slatedb_ext/*.so
+/ext/slatedb_ext/*.dll
+/ext/slatedb_ext/*.bundle.dSYM/
+
+# Cargo.lock for extension (library crates shouldn't commit this)
+/ext/slatedb_ext/Cargo.lock
+
+# Build logs and temp files
+/ext/slatedb_ext/mkmf.log
+/ext/slatedb_ext/.sitearchdir.time
+
+# Ruby build artifacts
+/tmp/
+/pkg/
+*.gem
+
+# Bundler
+/.bundle/
+/vendor/bundle/
+Gemfile.lock
+
+# RSpec
+/.rspec_status
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Compiled library location
+/lib/slatedb/*.bundle
+/lib/slatedb/*.so
+/lib/slatedb/*.dll
