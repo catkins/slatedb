@@ -20,6 +20,7 @@ mod database;
 mod errors;
 mod iterator;
 mod runtime;
+mod write_batch;
 
 /// Initialize the SlateDb Ruby module.
 ///
@@ -34,6 +35,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     // Define core classes
     database::define_database_class(ruby, &module)?;
     iterator::define_iterator_class(ruby, &module)?;
+    write_batch::define_write_batch_class(ruby, &module)?;
 
     Ok(())
 }

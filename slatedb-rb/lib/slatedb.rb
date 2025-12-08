@@ -123,5 +123,162 @@ module SlateDb
         _delete_with_options(key, { await_durable: await_durable })
       end
     end
+
+    # Scan a range of keys.
+    #
+    # @param start_key [String] The start key (inclusive)
+    # @param end_key [String, nil] The end key (exclusive). If nil, scans to end.
+    # @param durability_filter [String, nil] Filter by durability level ("remote" or "memory")
+    # @param dirty [Boolean, nil] Whether to include uncommitted data
+    # @param read_ahead_bytes [Integer, nil] Number of bytes to read ahead
+    # @param cache_blocks [Boolean, nil] Whether to cache blocks
+    # @param max_fetch_tasks [Integer, nil] Maximum number of fetch tasks
+    # @return [Iterator] An iterator over key-value pairs
+    #
+    # @example Basic scan
+    #   iter = db.scan("a")
+    #   while entry = iter.next_entry
+    #     key, value = entry
+    #     puts "#{key}: #{value}"
+    #   end
+    #
+    # @example Scan with range
+    #   iter = db.scan("a", "z")
+    #
+    # @example Scan with block
+    #   db.scan("user:") do |key, value|
+    #     puts "#{key}: #{value}"
+    #   end
+    #
+    def scan(start_key, end_key = nil, durability_filter: nil, dirty: nil,
+             read_ahead_bytes: nil, cache_blocks: nil, max_fetch_tasks: nil, &block)
+      opts = {}
+      opts[:durability_filter] = durability_filter.to_s if durability_filter
+      opts[:dirty] = dirty unless dirty.nil?
+      opts[:read_ahead_bytes] = read_ahead_bytes if read_ahead_bytes
+      opts[:cache_blocks] = cache_blocks unless cache_blocks.nil?
+      opts[:max_fetch_tasks] = max_fetch_tasks if max_fetch_tasks
+
+      iter = if opts.empty?
+               _scan(start_key, end_key)
+             else
+               _scan_with_options(start_key, end_key, opts)
+             end
+
+      if block_given?
+        iter.each(&block)
+      else
+        iter
+      end
+    end
+
+    # Write a batch of operations atomically.
+    #
+    # @param batch [WriteBatch] The batch to write
+    # @param await_durable [Boolean] Whether to wait for durability (default: true)
+    # @return [void]
+    #
+    # @example Write a batch
+    #   batch = SlateDb::WriteBatch.new
+    #   batch.put("key1", "value1")
+    #   batch.put("key2", "value2")
+    #   batch.delete("key3")
+    #   db.write(batch)
+    #
+    # @example Using batch block helper
+    #   db.batch do |b|
+    #     b.put("key1", "value1")
+    #     b.put("key2", "value2")
+    #   end
+    #
+    def write(batch, await_durable: nil)
+      if await_durable.nil?
+        _write(batch)
+      else
+        _write_with_options(batch, { await_durable: await_durable })
+      end
+    end
+
+    # Create and write a batch using a block.
+    #
+    # @param await_durable [Boolean] Whether to wait for durability (default: true)
+    # @yield [batch] Yields a WriteBatch to the block
+    # @return [void]
+    #
+    # @example
+    #   db.batch do |b|
+    #     b.put("key1", "value1")
+    #     b.put("key2", "value2")
+    #     b.delete("old_key")
+    #   end
+    #
+    def batch(await_durable: nil, &block)
+      b = WriteBatch.new
+      yield b
+      write(b, await_durable: await_durable)
+    end
+  end
+
+  class Iterator
+    include Enumerable
+
+    # Iterate over all entries.
+    #
+    # @yield [key, value] Yields each key-value pair
+    # @return [self, Enumerator] Returns self if block given, otherwise an Enumerator
+    #
+    # @example
+    #   iter.each do |key, value|
+    #     puts "#{key}: #{value}"
+    #   end
+    #
+    # @example With Enumerable methods
+    #   iter.map { |k, v| [k.upcase, v] }
+    #   iter.select { |k, v| k.start_with?("user:") }
+    #
+    def each(&block)
+      return to_enum(:each) unless block_given?
+
+      while (entry = next_entry)
+        yield entry
+      end
+
+      self
+    end
+  end
+
+  class WriteBatch
+    # Add a put operation to the batch.
+    #
+    # @param key [String] The key to store
+    # @param value [String] The value to store
+    # @param ttl [Integer, nil] Time-to-live in milliseconds
+    # @return [self] Returns self for method chaining
+    #
+    # @example
+    #   batch.put("key", "value")
+    #   batch.put("key2", "value2", ttl: 60_000)
+    #
+    def put(key, value, ttl: nil)
+      if ttl
+        _put_with_options(key, value, { ttl: ttl })
+      else
+        _put(key, value)
+      end
+      self
+    end
+
+    # Add a delete operation to the batch.
+    #
+    # @param key [String] The key to delete
+    # @return [self] Returns self for method chaining
+    #
+    # @example
+    #   batch.delete("key")
+    #
+    def delete(key)
+      _delete(key)
+      self
+    end
   end
 end
