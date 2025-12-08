@@ -217,6 +217,93 @@ module SlateDb
       yield b
       write(b, await_durable: await_durable)
     end
+
+    # Begin a new transaction.
+    #
+    # @param isolation [Symbol, String] Isolation level (:snapshot or :serializable)
+    # @yield [txn] If a block is given, yields the transaction and auto-commits/rollbacks
+    # @return [Transaction, Object] The transaction (or block result if block given)
+    #
+    # @example Manual transaction management
+    #   txn = db.begin_transaction
+    #   txn.put("key", "value")
+    #   txn.commit
+    #
+    # @example Block-based transaction (auto-commit)
+    #   db.transaction do |txn|
+    #     txn.put("key", "value")
+    #     txn.get("other_key")
+    #   end # automatically committed
+    #
+    # @example Serializable isolation
+    #   db.transaction(isolation: :serializable) do |txn|
+    #     val = txn.get("counter")
+    #     txn.put("counter", (val.to_i + 1).to_s)
+    #   end
+    #
+    def begin_transaction(isolation: nil)
+      isolation_str = isolation&.to_s
+      _begin_transaction(isolation_str)
+    end
+
+    # Execute a block within a transaction.
+    #
+    # The transaction is automatically committed if the block succeeds,
+    # or rolled back if an exception is raised.
+    #
+    # @param isolation [Symbol, String] Isolation level (:snapshot or :serializable)
+    # @yield [txn] Yields the transaction to the block
+    # @return [Object] The result of the block
+    #
+    # @example
+    #   result = db.transaction do |txn|
+    #     old_val = txn.get("counter") || "0"
+    #     new_val = (old_val.to_i + 1).to_s
+    #     txn.put("counter", new_val)
+    #     new_val
+    #   end
+    #
+    def transaction(isolation: nil)
+      txn = begin_transaction(isolation: isolation)
+      begin
+        result = yield txn
+        txn.commit
+        result
+      rescue => e
+        txn.rollback rescue nil
+        raise
+      end
+    end
+
+    # Create a snapshot for consistent reads.
+    #
+    # @yield [snapshot] If a block is given, yields the snapshot and auto-closes
+    # @return [Snapshot, Object] The snapshot (or block result if block given)
+    #
+    # @example Manual snapshot management
+    #   snapshot = db.snapshot
+    #   snapshot.get("key")
+    #   snapshot.close
+    #
+    # @example Block-based snapshot (auto-close)
+    #   db.snapshot do |snap|
+    #     snap.get("key1")
+    #     snap.get("key2")
+    #   end # automatically closed
+    #
+    def snapshot(&block)
+      snap = _snapshot
+
+      if block_given?
+        begin
+          yield snap
+        ensure
+          snap.close rescue nil
+        end
+      else
+        snap
+      end
+    end
   end
 
   class Iterator
@@ -279,6 +366,132 @@ module SlateDb
     def delete(key)
       _delete(key)
       self
+    end
+  end
+
+  class Transaction
+    # Get a value by key within the transaction.
+    #
+    # @param key [String] The key to look up
+    # @param durability_filter [String, nil] Filter by durability level
+    # @param dirty [Boolean, nil] Whether to include uncommitted data
+    # @param cache_blocks [Boolean, nil] Whether to cache blocks
+    # @return [String, nil] The value, or nil if not found
+    #
+    def get(key, durability_filter: nil, dirty: nil, cache_blocks: nil)
+      opts = {}
+      opts[:durability_filter] = durability_filter.to_s if durability_filter
+      opts[:dirty] = dirty unless dirty.nil?
+      opts[:cache_blocks] = cache_blocks unless cache_blocks.nil?
+
+      if opts.empty?
+        _get(key)
+      else
+        _get_with_options(key, opts)
+      end
+    end
+
+    # Store a key-value pair within the transaction.
+    #
+    # @param key [String] The key to store
+    # @param value [String] The value to store
+    # @param ttl [Integer, nil] Time-to-live in milliseconds
+    # @return [void]
+    #
+    def put(key, value, ttl: nil)
+      if ttl
+        _put_with_options(key, value, { ttl: ttl })
+      else
+        _put(key, value)
+      end
+    end
+
+    # Delete a key within the transaction.
+    #
+    # @param key [String] The key to delete
+    # @return [void]
+    #
+    def delete(key)
+      _delete(key)
+    end
+
+    # Scan a range of keys within the transaction.
+    #
+    # @param start_key [String] The start key (inclusive)
+    # @param end_key [String, nil] The end key (exclusive)
+    # @return [Iterator] An iterator over key-value pairs
+    #
+    def scan(start_key, end_key = nil, durability_filter: nil, dirty: nil,
+             read_ahead_bytes: nil, cache_blocks: nil, max_fetch_tasks: nil, &block)
+      opts = {}
+      opts[:durability_filter] = durability_filter.to_s if durability_filter
+      opts[:dirty] = dirty unless dirty.nil?
+      opts[:read_ahead_bytes] = read_ahead_bytes if read_ahead_bytes
+      opts[:cache_blocks] = cache_blocks unless cache_blocks.nil?
+      opts[:max_fetch_tasks] = max_fetch_tasks if max_fetch_tasks
+
+      iter = if opts.empty?
+               _scan(start_key, end_key)
+             else
+               _scan_with_options(start_key, end_key, opts)
+             end
+
+      if block_given?
+        iter.each(&block)
+      else
+        iter
+      end
+    end
+  end
+
+  class Snapshot
+    # Get a value by key from the snapshot.
+    #
+    # @param key [String] The key to look up
+    # @param durability_filter [String, nil] Filter by durability level
+    # @param dirty [Boolean, nil] Whether to include uncommitted data
+    # @param cache_blocks [Boolean, nil] Whether to cache blocks
+    # @return [String, nil] The value, or nil if not found
+    #
+    def get(key, durability_filter: nil, dirty: nil, cache_blocks: nil)
+      opts = {}
+      opts[:durability_filter] = durability_filter.to_s if durability_filter
+      opts[:dirty] = dirty unless dirty.nil?
+      opts[:cache_blocks] = cache_blocks unless cache_blocks.nil?
+
+      if opts.empty?
+        _get(key)
+      else
+        _get_with_options(key, opts)
+      end
+    end
+
+    # Scan a range of keys from the snapshot.
+    #
+    # @param start_key [String] The start key (inclusive)
+    # @param end_key [String, nil] The end key (exclusive)
+    # @return [Iterator] An iterator over key-value pairs
+    #
+    def scan(start_key, end_key = nil, durability_filter: nil, dirty: nil,
+             read_ahead_bytes: nil, cache_blocks: nil, max_fetch_tasks: nil, &block)
+      opts = {}
+      opts[:durability_filter] = durability_filter.to_s if durability_filter
+      opts[:dirty] = dirty unless dirty.nil?
+      opts[:read_ahead_bytes] = read_ahead_bytes if read_ahead_bytes
+      opts[:cache_blocks] = cache_blocks unless cache_blocks.nil?
+      opts[:max_fetch_tasks] = max_fetch_tasks if max_fetch_tasks
+
+      iter = if opts.empty?
+               _scan(start_key, end_key)
+             else
+               _scan_with_options(start_key, end_key, opts)
+             end
+
+      if block_given?
+        iter.each(&block)
+      else
+        iter
+      end
     end
   end
 end

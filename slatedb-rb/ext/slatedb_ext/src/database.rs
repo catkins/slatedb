@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
 use magnus::prelude::*;
-use magnus::{function, method, Error, RHash, Ruby, Symbol, TryConvert};
+use magnus::{function, method, Error, RHash, Ruby, TryConvert};
 use slatedb::config::{DurabilityLevel, PutOptions, ReadOptions, ScanOptions, Ttl, WriteOptions};
 use slatedb::object_store::memory::InMemory;
-use slatedb::Db;
+use slatedb::{Db, IsolationLevel};
 
 use crate::errors::{invalid_argument_error, map_error};
 use crate::iterator::Iterator;
 use crate::runtime::get_runtime;
+use crate::snapshot::Snapshot;
+use crate::transaction::Transaction;
 use crate::write_batch::WriteBatch;
 
 /// Ruby wrapper for SlateDB database.
@@ -21,7 +23,8 @@ pub struct Database {
 
 /// Helper to extract an optional value from an RHash
 fn get_optional<T: TryConvert>(hash: &RHash, key: &str) -> Result<Option<T>, Error> {
-    let sym = Symbol::new(key);
+    let ruby = Ruby::get().expect("Ruby runtime not available");
+    let sym = ruby.to_symbol(key);
     match hash.get(sym) {
         Some(val) => {
             if val.is_nil() {
@@ -402,6 +405,48 @@ impl Database {
         Ok(())
     }
 
+    /// Begin a new transaction.
+    ///
+    /// # Arguments
+    /// * `isolation` - Optional isolation level ("snapshot" or "serializable")
+    ///
+    /// # Returns
+    /// A new Transaction instance
+    pub fn begin_transaction(&self, isolation: Option<String>) -> Result<Transaction, Error> {
+        let isolation_level = match isolation.as_deref().unwrap_or("snapshot") {
+            "snapshot" | "si" => IsolationLevel::Snapshot,
+            "serializable" | "ssi" | "serializable_snapshot" => {
+                IsolationLevel::SerializableSnapshot
+            }
+            other => {
+                return Err(invalid_argument_error(&format!(
+                    "invalid isolation level: {} (expected 'snapshot' or 'serializable')",
+                    other
+                )))
+            }
+        };
+
+        let rt = get_runtime();
+        let txn = rt
+            .block_on(async { self.inner.begin(isolation_level).await })
+            .map_err(map_error)?;
+
+        Ok(Transaction::new(txn))
+    }
+
+    /// Create a snapshot for consistent reads.
+    ///
+    /// # Returns
+    /// A new Snapshot instance
+    pub fn snapshot(&self) -> Result<Snapshot, Error> {
+        let rt = get_runtime();
+        let snap = rt
+            .block_on(async { self.inner.snapshot().await })
+            .map_err(map_error)?;
+
+        Ok(Snapshot::new(snap))
+    }
+
     /// Flush the database to ensure durability.
     pub fn flush(&self) -> Result<(), Error> {
         let rt = get_runtime();
@@ -447,6 +492,11 @@ pub fn define_database_class(ruby: &Ruby, module: &magnus::RModule) -> Result<()
         "_write_with_options",
         method!(Database::write_with_options, 2),
     )?;
+    class.define_method(
+        "_begin_transaction",
+        method!(Database::begin_transaction, 1),
+    )?;
+    class.define_method("_snapshot", method!(Database::snapshot, 0))?;
     class.define_method("flush", method!(Database::flush, 0))?;
     class.define_method("close", method!(Database::close, 0))?;
 

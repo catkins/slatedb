@@ -14,12 +14,14 @@
 //! db.close
 //! ```
 
-use magnus::{define_module, Error, Ruby};
+use magnus::{Error, Ruby};
 
 mod database;
 mod errors;
 mod iterator;
 mod runtime;
+mod snapshot;
+mod transaction;
 mod write_batch;
 
 /// Initialize the SlateDb Ruby module.
@@ -27,7 +29,7 @@ mod write_batch;
 /// This is called automatically when the native extension is loaded.
 #[magnus::init]
 fn init(ruby: &Ruby) -> Result<(), Error> {
-    let module = define_module("SlateDb")?;
+    let module = ruby.define_module("SlateDb")?;
 
     // Define exception classes first
     errors::define_exceptions(ruby, &module)?;
@@ -36,6 +38,8 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     database::define_database_class(ruby, &module)?;
     iterator::define_iterator_class(ruby, &module)?;
     write_batch::define_write_batch_class(ruby, &module)?;
+    transaction::define_transaction_class(ruby, &module)?;
+    snapshot::define_snapshot_class(ruby, &module)?;
 
     Ok(())
 }
