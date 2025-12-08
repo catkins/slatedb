@@ -20,16 +20,17 @@ Gem::Specification.new do |spec|
 
   spec.files = Dir[
     "lib/**/*.rb",
-    "ext/**/*.{rs,rb,toml}",
+    "ext/**/*.{rs,toml}",
     "sig/**/*.rbs",
     "Cargo.toml",
+    "extconf.rb",
     "LICENSE",
     "README.md"
   ]
 
   spec.bindir = "bin"
   spec.require_paths = ["lib"]
-  spec.extensions = ["ext/slatedb_ext/extconf.rb"]
+  spec.extensions = ["extconf.rb"]
 
   spec.add_dependency "rb_sys", "~> 0.9"
 
