@@ -23,3 +23,4 @@ bytes = { workspace = true }
 object_store = { workspace = true }
 once_cell = { workspace = true }
 log = { workspace = true }
+uuid = { workspace = true }

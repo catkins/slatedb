@@ -16,9 +16,11 @@
 
 use magnus::{Error, Ruby};
 
+mod admin;
 mod database;
 mod errors;
 mod iterator;
+mod reader;
 mod runtime;
 mod snapshot;
 mod transaction;
@@ -40,6 +42,8 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     write_batch::define_write_batch_class(ruby, &module)?;
     transaction::define_transaction_class(ruby, &module)?;
     snapshot::define_snapshot_class(ruby, &module)?;
+    reader::define_reader_class(ruby, &module)?;
+    admin::define_admin_class(ruby, &module)?;
 
     Ok(())
 }
