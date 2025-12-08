@@ -6,7 +6,7 @@ use slatedb::DbIterator;
 use tokio::sync::Mutex;
 
 use crate::errors::{internal_error, invalid_argument_error, map_error};
-use crate::runtime::get_runtime;
+use crate::runtime::block_on;
 
 /// Ruby wrapper for SlateDB iterator.
 ///
@@ -30,9 +30,9 @@ impl Iterator {
     /// Returns [key, value] as an array, or nil if iteration is complete.
     pub fn next_entry(&self) -> Result<Option<(String, String)>, Error> {
         let inner = self.inner.clone();
-        let rt = get_runtime();
+        
 
-        let result = rt.block_on(async {
+        let result = block_on(async {
             let mut guard = inner.lock().await;
             let iter = guard
                 .as_mut()
@@ -54,9 +54,9 @@ impl Iterator {
     /// Returns [key, value] as byte arrays, or nil if iteration is complete.
     pub fn next_entry_bytes(&self) -> Result<Option<(Vec<u8>, Vec<u8>)>, Error> {
         let inner = self.inner.clone();
-        let rt = get_runtime();
+        
 
-        let result = rt.block_on(async {
+        let result = block_on(async {
             let mut guard = inner.lock().await;
             let iter = guard
                 .as_mut()
@@ -77,9 +77,9 @@ impl Iterator {
         }
 
         let inner = self.inner.clone();
-        let rt = get_runtime();
+        
 
-        rt.block_on(async {
+        block_on(async {
             let mut guard = inner.lock().await;
             let iter = guard
                 .as_mut()
@@ -94,9 +94,9 @@ impl Iterator {
     /// Close the iterator and release resources.
     pub fn close(&self) -> Result<(), Error> {
         let inner = self.inner.clone();
-        let rt = get_runtime();
+        
 
-        rt.block_on(async {
+        block_on(async {
             let mut guard = inner.lock().await;
             *guard = None;
         });

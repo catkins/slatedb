@@ -47,7 +47,8 @@ foyer = "0.18.0"
 futures = "0.3.30"
 humantime = "2.1.0"
 log = "0.4.27"
-magnus = "0.7"
+magnus = { version = "0.8", features = ["rb-sys"] }
+rb-sys = { version = "0.9", features = ["stable-api-compiled-fallback"] }
 lz4_flex = "0.11.5"
 moka = "0.12.8"
 object_store = "0.12.3"

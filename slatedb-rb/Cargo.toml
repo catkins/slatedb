@@ -17,7 +17,8 @@ bench = false
 
 [dependencies]
 slatedb = { workspace = true }
-magnus = "0.8"
+magnus = { workspace = true }
+rb-sys = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
 bytes = { workspace = true }
 object_store = { workspace = true }

@@ -7,7 +7,7 @@ use slatedb::DbReader;
 
 use crate::errors::{invalid_argument_error, map_error};
 use crate::iterator::Iterator;
-use crate::runtime::get_runtime;
+use crate::runtime::block_on;
 
 /// Helper to extract an optional value from an RHash
 fn get_optional<T: TryConvert>(hash: &RHash, key: &str) -> Result<Option<T>, Error> {
@@ -48,7 +48,7 @@ impl Reader {
         checkpoint_id: Option<String>,
         kwargs: RHash,
     ) -> Result<Self, Error> {
-        let rt = get_runtime();
+        
 
         // Parse options
         let manifest_poll_interval = get_optional::<u64>(&kwargs, "manifest_poll_interval")?
@@ -67,7 +67,7 @@ impl Reader {
                 None
             };
 
-        let reader = rt.block_on(async {
+        let reader = block_on(async {
             let object_store: Arc<dyn object_store::ObjectStore> = if let Some(ref url) = url {
                 slatedb::Db::resolve_object_store(url).map_err(map_error)?
             } else {
@@ -101,9 +101,8 @@ impl Reader {
             return Err(invalid_argument_error("key cannot be empty"));
         }
 
-        let rt = get_runtime();
-        let result = rt
-            .block_on(async { self.inner.get(key.as_bytes()).await })
+        
+        let result = block_on(async { self.inner.get(key.as_bytes()).await })
             .map_err(map_error)?;
 
         Ok(result.map(|b| String::from_utf8_lossy(&b).to_string()))
@@ -138,9 +137,8 @@ impl Reader {
             opts.cache_blocks = cache_blocks;
         }
 
-        let rt = get_runtime();
-        let result = rt
-            .block_on(async { self.inner.get_with_options(key.as_bytes(), &opts).await })
+        
+        let result = block_on(async { self.inner.get_with_options(key.as_bytes(), &opts).await })
             .map_err(map_error)?;
 
         Ok(result.map(|b| String::from_utf8_lossy(&b).to_string()))
@@ -152,9 +150,8 @@ impl Reader {
             return Err(invalid_argument_error("key cannot be empty"));
         }
 
-        let rt = get_runtime();
-        let result = rt
-            .block_on(async { self.inner.get(key.as_bytes()).await })
+        
+        let result = block_on(async { self.inner.get(key.as_bytes()).await })
             .map_err(map_error)?;
 
         Ok(result.map(|b| b.to_vec()))
@@ -166,11 +163,11 @@ impl Reader {
             return Err(invalid_argument_error("start key cannot be empty"));
         }
 
-        let rt = get_runtime();
+        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
-        let iter = rt.block_on(async {
+        let iter = block_on(async {
             let range = match end_bytes {
                 Some(end) => self.inner.scan(start_bytes..end).await,
                 None => self.inner.scan(start_bytes..).await,
@@ -223,11 +220,11 @@ impl Reader {
             opts.max_fetch_tasks = mft;
         }
 
-        let rt = get_runtime();
+        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
-        let iter = rt.block_on(async {
+        let iter = block_on(async {
             let range = match end_bytes {
                 Some(end) => self.inner.scan_with_options(start_bytes..end, &opts).await,
                 None => self.inner.scan_with_options(start_bytes.., &opts).await,
@@ -240,8 +237,8 @@ impl Reader {
 
     /// Close the reader.
     pub fn close(&self) -> Result<(), Error> {
-        let rt = get_runtime();
-        rt.block_on(async { self.inner.close().await })
+        
+        block_on(async { self.inner.close().await })
             .map_err(map_error)?;
         Ok(())
     }

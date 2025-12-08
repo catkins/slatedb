@@ -15,7 +15,8 @@ path = "src/lib.rs"
 
 [dependencies]
 slatedb = { path = "../../../slatedb" }
-magnus = "0.7"
+magnus = { version = "0.8", features = ["rb-sys"] }
+rb-sys = { version = "0.9", features = ["stable-api-compiled-fallback"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 bytes = "1"
 object_store = "0.12"

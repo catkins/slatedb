@@ -6,7 +6,7 @@ use slatedb::admin::AdminBuilder;
 use slatedb::config::{CheckpointOptions, GarbageCollectorOptions};
 
 use crate::errors::{invalid_argument_error, map_error};
-use crate::runtime::get_runtime;
+use crate::runtime::block_on;
 
 /// Helper to extract an optional value from an RHash
 fn get_optional<T: TryConvert>(hash: &RHash, key: &str) -> Result<Option<T>, Error> {
@@ -40,9 +40,9 @@ impl Admin {
     /// * `path` - The path identifier for the database
     /// * `url` - Optional object store URL
     pub fn new(path: String, url: Option<String>) -> Result<Self, Error> {
-        let rt = get_runtime();
+        
 
-        let admin = rt.block_on(async {
+        let admin = block_on(async {
             let object_store: Arc<dyn object_store::ObjectStore> = if let Some(ref url) = url {
                 slatedb::Db::resolve_object_store(url).map_err(map_error)?
             } else {
@@ -63,9 +63,9 @@ impl Admin {
     /// # Returns
     /// JSON string of the manifest, or None if no manifests exist.
     pub fn read_manifest(&self, id: Option<u64>) -> Result<Option<String>, Error> {
-        let rt = get_runtime();
+        
 
-        rt.block_on(async { self.inner.read_manifest(id).await })
+        block_on(async { self.inner.read_manifest(id).await })
             .map_err(|e| {
                 let ruby = Ruby::get().expect("Ruby runtime not available");
                 Error::new(ruby.exception_runtime_error(), format!("{}", e))
@@ -81,7 +81,7 @@ impl Admin {
     /// # Returns
     /// JSON string containing a list of manifest metadata.
     pub fn list_manifests(&self, start: Option<u64>, end_id: Option<u64>) -> Result<String, Error> {
-        let rt = get_runtime();
+        
 
         let range = match (start, end_id) {
             (Some(s), Some(e)) => s..e,
@@ -90,7 +90,7 @@ impl Admin {
             (None, None) => 0..u64::MAX,
         };
 
-        rt.block_on(async { self.inner.list_manifests(range).await })
+        block_on(async { self.inner.list_manifests(range).await })
             .map_err(|e| {
                 let ruby = Ruby::get().expect("Ruby runtime not available");
                 Error::new(ruby.exception_runtime_error(), format!("{}", e))
@@ -126,9 +126,8 @@ impl Admin {
             name,
         };
 
-        let rt = get_runtime();
-        let result = rt
-            .block_on(async { self.inner.create_detached_checkpoint(&options).await })
+        
+        let result = block_on(async { self.inner.create_detached_checkpoint(&options).await })
             .map_err(map_error)?;
 
         let ruby = Ruby::get().expect("Ruby runtime not available");
@@ -147,10 +146,9 @@ impl Admin {
     /// # Returns
     /// Array of checkpoint hashes
     pub fn list_checkpoints(&self, name: Option<String>) -> Result<magnus::RArray, Error> {
-        let rt = get_runtime();
+        
 
-        let checkpoints = rt
-            .block_on(async { self.inner.list_checkpoints(name.as_deref()).await })
+        let checkpoints = block_on(async { self.inner.list_checkpoints(name.as_deref()).await })
             .map_err(|e| {
                 let ruby = Ruby::get().expect("Ruby runtime not available");
                 Error::new(ruby.exception_runtime_error(), format!("{}", e))
@@ -186,8 +184,8 @@ impl Admin {
 
         let lifetime_duration = lifetime.map(std::time::Duration::from_millis);
 
-        let rt = get_runtime();
-        rt.block_on(async {
+        
+        block_on(async {
             self.inner
                 .refresh_checkpoint(checkpoint_uuid, lifetime_duration)
                 .await
@@ -205,8 +203,8 @@ impl Admin {
         let checkpoint_uuid = uuid::Uuid::parse_str(&id)
             .map_err(|e| invalid_argument_error(&format!("invalid checkpoint UUID: {}", e)))?;
 
-        let rt = get_runtime();
-        rt.block_on(async { self.inner.delete_checkpoint(checkpoint_uuid).await })
+        
+        block_on(async { self.inner.delete_checkpoint(checkpoint_uuid).await })
             .map_err(map_error)?;
 
         Ok(())
@@ -220,8 +218,8 @@ impl Admin {
         // Use default GC options - the structure is complex with nested directory options
         let gc_opts = GarbageCollectorOptions::default();
 
-        let rt = get_runtime();
-        rt.block_on(async { self.inner.run_gc_once(gc_opts).await })
+        
+        block_on(async { self.inner.run_gc_once(gc_opts).await })
             .map_err(|e| {
                 let ruby = Ruby::get().expect("Ruby runtime not available");
                 Error::new(ruby.exception_runtime_error(), format!("{}", e))

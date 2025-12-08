@@ -8,7 +8,7 @@ use slatedb::{Db, IsolationLevel};
 
 use crate::errors::{invalid_argument_error, map_error};
 use crate::iterator::Iterator;
-use crate::runtime::get_runtime;
+use crate::runtime::block_on;
 use crate::snapshot::Snapshot;
 use crate::transaction::Transaction;
 use crate::write_batch::WriteBatch;
@@ -47,9 +47,7 @@ impl Database {
     /// # Returns
     /// A new Database instance
     pub fn open(path: String, url: Option<String>) -> Result<Self, Error> {
-        let rt = get_runtime();
-
-        let db = rt.block_on(async {
+        let db = block_on(async {
             let object_store: Arc<dyn object_store::ObjectStore> = if let Some(ref url) = url {
                 Db::resolve_object_store(url).map_err(map_error)?
             } else {
@@ -81,10 +79,8 @@ impl Database {
         }
 
         let opts = ReadOptions::default();
-        let rt = get_runtime();
 
-        let result = rt
-            .block_on(async { self.inner.get_with_options(key.as_bytes(), &opts).await })
+        let result = block_on(async { self.inner.get_with_options(key.as_bytes(), &opts).await })
             .map_err(map_error)?;
 
         Ok(result.map(|b| String::from_utf8_lossy(&b).to_string()))
@@ -129,9 +125,7 @@ impl Database {
             opts.cache_blocks = cache_blocks;
         }
 
-        let rt = get_runtime();
-        let result = rt
-            .block_on(async { self.inner.get_with_options(key.as_bytes(), &opts).await })
+        let result = block_on(async { self.inner.get_with_options(key.as_bytes(), &opts).await })
             .map_err(map_error)?;
 
         Ok(result.map(|b| String::from_utf8_lossy(&b).to_string()))
@@ -150,10 +144,8 @@ impl Database {
         }
 
         let opts = ReadOptions::default();
-        let rt = get_runtime();
 
-        let result = rt
-            .block_on(async { self.inner.get_with_options(key.as_bytes(), &opts).await })
+        let result = block_on(async { self.inner.get_with_options(key.as_bytes(), &opts).await })
             .map_err(map_error)?;
 
         Ok(result.map(|b| b.to_vec()))
@@ -175,8 +167,8 @@ impl Database {
             await_durable: true,
         };
 
-        let rt = get_runtime();
-        rt.block_on(async {
+        
+        block_on(async {
             self.inner
                 .put_with_options(key.as_bytes(), value.as_bytes(), &put_opts, &write_opts)
                 .await
@@ -210,8 +202,8 @@ impl Database {
         let await_durable = get_optional::<bool>(&kwargs, "await_durable")?.unwrap_or(true);
         let write_opts = WriteOptions { await_durable };
 
-        let rt = get_runtime();
-        rt.block_on(async {
+        
+        block_on(async {
             self.inner
                 .put_with_options(key.as_bytes(), value.as_bytes(), &put_opts, &write_opts)
                 .await
@@ -234,8 +226,8 @@ impl Database {
             await_durable: true,
         };
 
-        let rt = get_runtime();
-        rt.block_on(async {
+        
+        block_on(async {
             self.inner
                 .delete_with_options(key.as_bytes(), &write_opts)
                 .await
@@ -258,8 +250,8 @@ impl Database {
         let await_durable = get_optional::<bool>(&kwargs, "await_durable")?.unwrap_or(true);
         let write_opts = WriteOptions { await_durable };
 
-        let rt = get_runtime();
-        rt.block_on(async {
+        
+        block_on(async {
             self.inner
                 .delete_with_options(key.as_bytes(), &write_opts)
                 .await
@@ -283,12 +275,12 @@ impl Database {
         }
 
         let opts = ScanOptions::default();
-        let rt = get_runtime();
+        
 
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
-        let iter = rt.block_on(async {
+        let iter = block_on(async {
             let range = match end_bytes {
                 Some(end) => self.inner.scan_with_options(start_bytes..end, &opts).await,
                 None => self.inner.scan_with_options(start_bytes.., &opts).await,
@@ -354,11 +346,11 @@ impl Database {
             opts.max_fetch_tasks = mft;
         }
 
-        let rt = get_runtime();
+        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
-        let iter = rt.block_on(async {
+        let iter = block_on(async {
             let range = match end_bytes {
                 Some(end) => self.inner.scan_with_options(start_bytes..end, &opts).await,
                 None => self.inner.scan_with_options(start_bytes.., &opts).await,
@@ -374,10 +366,10 @@ impl Database {
     /// # Arguments
     /// * `batch` - The WriteBatch to write
     pub fn write(&self, batch: &WriteBatch) -> Result<(), Error> {
-        let rt = get_runtime();
+        
         let batch_inner = batch.take()?;
 
-        rt.block_on(async { self.inner.write(batch_inner).await })
+        block_on(async { self.inner.write(batch_inner).await })
             .map_err(map_error)?;
 
         Ok(())
@@ -392,10 +384,10 @@ impl Database {
         let await_durable = get_optional::<bool>(&kwargs, "await_durable")?.unwrap_or(true);
         let write_opts = WriteOptions { await_durable };
 
-        let rt = get_runtime();
+        
         let batch_inner = batch.take()?;
 
-        rt.block_on(async {
+        block_on(async {
             self.inner
                 .write_with_options(batch_inner, &write_opts)
                 .await
@@ -426,9 +418,8 @@ impl Database {
             }
         };
 
-        let rt = get_runtime();
-        let txn = rt
-            .block_on(async { self.inner.begin(isolation_level).await })
+        
+        let txn = block_on(async { self.inner.begin(isolation_level).await })
             .map_err(map_error)?;
 
         Ok(Transaction::new(txn))
@@ -439,9 +430,8 @@ impl Database {
     /// # Returns
     /// A new Snapshot instance
     pub fn snapshot(&self) -> Result<Snapshot, Error> {
-        let rt = get_runtime();
-        let snap = rt
-            .block_on(async { self.inner.snapshot().await })
+        
+        let snap = block_on(async { self.inner.snapshot().await })
             .map_err(map_error)?;
 
         Ok(Snapshot::new(snap))
@@ -449,16 +439,16 @@ impl Database {
 
     /// Flush the database to ensure durability.
     pub fn flush(&self) -> Result<(), Error> {
-        let rt = get_runtime();
-        rt.block_on(async { self.inner.flush().await })
+        
+        block_on(async { self.inner.flush().await })
             .map_err(map_error)?;
         Ok(())
     }
 
     /// Close the database.
     pub fn close(&self) -> Result<(), Error> {
-        let rt = get_runtime();
-        rt.block_on(async { self.inner.close().await })
+        
+        block_on(async { self.inner.close().await })
             .map_err(map_error)?;
         Ok(())
     }

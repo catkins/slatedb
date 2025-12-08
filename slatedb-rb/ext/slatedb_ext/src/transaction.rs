@@ -7,7 +7,7 @@ use slatedb::DBTransaction;
 
 use crate::errors::{closed_error, invalid_argument_error, map_error};
 use crate::iterator::Iterator;
-use crate::runtime::get_runtime;
+use crate::runtime::block_on;
 
 /// Helper to extract an optional value from an RHash
 fn get_optional<T: TryConvert>(hash: &RHash, key: &str) -> Result<Option<T>, Error> {
@@ -53,9 +53,8 @@ impl Transaction {
             .as_ref()
             .ok_or_else(|| closed_error("transaction is closed"))?;
 
-        let rt = get_runtime();
-        let result = rt
-            .block_on(async { txn.get(key.as_bytes()).await })
+        
+        let result = block_on(async { txn.get(key.as_bytes()).await })
             .map_err(map_error)?;
 
         Ok(result.map(|b| String::from_utf8_lossy(&b).to_string()))
@@ -95,9 +94,8 @@ impl Transaction {
             .as_ref()
             .ok_or_else(|| closed_error("transaction is closed"))?;
 
-        let rt = get_runtime();
-        let result = rt
-            .block_on(async { txn.get_with_options(key.as_bytes(), &opts).await })
+        
+        let result = block_on(async { txn.get_with_options(key.as_bytes(), &opts).await })
             .map_err(map_error)?;
 
         Ok(result.map(|b| String::from_utf8_lossy(&b).to_string()))
@@ -172,11 +170,11 @@ impl Transaction {
             .as_ref()
             .ok_or_else(|| closed_error("transaction is closed"))?;
 
-        let rt = get_runtime();
+        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
-        let iter = rt.block_on(async {
+        let iter = block_on(async {
             let range = match end_bytes {
                 Some(end) => txn.scan(start_bytes..end).await,
                 None => txn.scan(start_bytes..).await,
@@ -234,11 +232,11 @@ impl Transaction {
             .as_ref()
             .ok_or_else(|| closed_error("transaction is closed"))?;
 
-        let rt = get_runtime();
+        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
-        let iter = rt.block_on(async {
+        let iter = block_on(async {
             let range = match end_bytes {
                 Some(end) => txn.scan_with_options(start_bytes..end, &opts).await,
                 None => txn.scan_with_options(start_bytes.., &opts).await,
@@ -257,8 +255,8 @@ impl Transaction {
             .take()
             .ok_or_else(|| closed_error("transaction is closed"))?;
 
-        let rt = get_runtime();
-        rt.block_on(async { txn.commit().await })
+        
+        block_on(async { txn.commit().await })
             .map_err(map_error)?;
 
         Ok(())
@@ -275,8 +273,8 @@ impl Transaction {
             .take()
             .ok_or_else(|| closed_error("transaction is closed"))?;
 
-        let rt = get_runtime();
-        rt.block_on(async { txn.commit_with_options(&write_opts).await })
+        
+        block_on(async { txn.commit_with_options(&write_opts).await })
             .map_err(map_error)?;
 
         Ok(())

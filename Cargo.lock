@@ -3585,6 +3585,7 @@ dependencies = [
  "magnus",
  "object_store",
  "once_cell",
+ "rb-sys",
  "slatedb",
  "tokio",
  "uuid",
