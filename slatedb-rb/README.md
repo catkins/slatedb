@@ -2,6 +2,34 @@
 
 Ruby bindings for [SlateDB](https://slatedb.io), a cloud-native embedded key-value store built on object storage.
 
+## Thread Safety
+
+**SlateDB is fully thread-safe and optimized for concurrent access.**
+
+- The `Database` class can be safely shared across multiple Ruby threads
+- All operations (get, put, delete, scan, transactions) are thread-safe
+- The Ruby bindings release the Global VM Lock (GVL) during I/O operations, allowing other Ruby threads to run concurrently
+- Perfect for use with multi-threaded Ruby applications like Puma, Sidekiq, and concurrent test suites
+
+```ruby
+db = SlateDb::Database.open("/tmp/mydb")
+
+# Safe to use from multiple threads
+threads = 10.times.map do |i|
+  Thread.new do
+    db.put("key-#{i}", "value-#{i}")
+    db.get("key-#{i}")
+  end
+end
+
+threads.each(&:join)
+```
+
+**Implementation details:**
+- The underlying SlateDB library uses `Arc` (atomic reference counting) and `RwLock` for internal state management
+- I/O operations release the Ruby GVL using `rb_thread_call_without_gvl`, preventing blocking other threads
+- A shared Tokio multi-threaded runtime handles all async operations efficiently
+
 ## Installation
 
 Add this line to your application's Gemfile:
@@ -66,7 +94,50 @@ SlateDb::Database.open("/tmp/mydb", url: "file:///tmp/mydb") do |db|
   db.put("key", "value")
 end
 
-# S3 (requires AWS credentials in environment)
+# S3 (requires AWS credentials)
+SlateDb::Database.open("mydb", url: "s3://mybucket/path") do |db|
+  db.put("key", "value")
+end
+
+# Azure Blob Storage
+SlateDb::Database.open("mydb", url: "az://container/path") do |db|
+  db.put("key", "value")
+end
+
+# Google Cloud Storage
+SlateDb::Database.open("mydb", url: "gs://bucket/path") do |db|
+  db.put("key", "value")
+end
+```
+
+#### Cloud Storage Credentials
+
+SlateDB uses the [object_store](https://docs.rs/object_store) crate, which automatically discovers credentials from standard environment variables and configuration files:
+
+**AWS S3:**
+- Environment variables: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`
+- Credential files: `~/.aws/credentials`, `~/.aws/config`
+- IAM roles (when running on EC2/ECS/EKS)
+- Web identity tokens (for IRSA on EKS)
+
+**Azure Blob Storage:**
+- Environment variables: `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_ACCOUNT_KEY`, `AZURE_STORAGE_SAS_TOKEN`
+- Azure CLI credentials: `az login`
+- Managed Identity (when running on Azure)
+
+**Google Cloud Storage:**
+- Environment variables: `GOOGLE_SERVICE_ACCOUNT`, `GOOGLE_SERVICE_ACCOUNT_PATH`, `GOOGLE_SERVICE_ACCOUNT_KEY`
+- Application Default Credentials: `gcloud auth application-default login`
+- Service account key file: `GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json`
+
+Example with explicit AWS credentials:
+
+```ruby
+# Set credentials via environment
+ENV['AWS_ACCESS_KEY_ID'] = 'your-access-key'
+ENV['AWS_SECRET_ACCESS_KEY'] = 'your-secret-key'
+ENV['AWS_REGION'] = 'us-east-1'
+
 SlateDb::Database.open("mydb", url: "s3://mybucket/path") do |db|
   db.put("key", "value")
 end
@@ -261,8 +332,11 @@ admin.refresh_checkpoint("uuid", lifetime: 3600_000)  # Extend lifetime
 admin.delete_checkpoint("uuid")
 
 # Garbage Collection
-admin.run_gc                         # Run with default settings
-admin.run_gc(min_age: 3600_000)      # Only collect objects older than 1 hour
+admin.run_gc                                    # Run with default settings
+admin.run_gc(min_age: 3600_000)                 # Set min age for all directories (1 hour)
+admin.run_gc(manifest_min_age: 86400_000)       # Custom age for manifest (1 day)
+admin.run_gc(wal_min_age: 60_000)               # Custom age for WAL (1 minute)
+admin.run_gc(compacted_min_age: 60_000)         # Custom age for compacted (1 minute)
 ```
 
 ### Flushing

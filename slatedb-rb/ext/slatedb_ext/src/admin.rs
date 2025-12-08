@@ -1,28 +1,13 @@
 use std::sync::Arc;
 
 use magnus::prelude::*;
-use magnus::{function, method, Error, RHash, Ruby, TryConvert};
+use magnus::{function, method, Error, RHash, Ruby};
 use slatedb::admin::AdminBuilder;
 use slatedb::config::{CheckpointOptions, GarbageCollectorOptions};
 
 use crate::errors::{invalid_argument_error, map_error};
 use crate::runtime::block_on;
-
-/// Helper to extract an optional value from an RHash
-fn get_optional<T: TryConvert>(hash: &RHash, key: &str) -> Result<Option<T>, Error> {
-    let ruby = Ruby::get().expect("Ruby runtime not available");
-    let sym = ruby.to_symbol(key);
-    match hash.get(sym) {
-        Some(val) => {
-            if val.is_nil() {
-                Ok(None)
-            } else {
-                Ok(Some(T::try_convert(val)?))
-            }
-        }
-        None => Ok(None),
-    }
-}
+use crate::utils::get_optional;
 
 /// Ruby wrapper for SlateDB Admin.
 ///
@@ -40,8 +25,6 @@ impl Admin {
     /// * `path` - The path identifier for the database
     /// * `url` - Optional object store URL
     pub fn new(path: String, url: Option<String>) -> Result<Self, Error> {
-        
-
         let admin = block_on(async {
             let object_store: Arc<dyn object_store::ObjectStore> = if let Some(ref url) = url {
                 slatedb::Db::resolve_object_store(url).map_err(map_error)?
@@ -63,13 +46,10 @@ impl Admin {
     /// # Returns
     /// JSON string of the manifest, or None if no manifests exist.
     pub fn read_manifest(&self, id: Option<u64>) -> Result<Option<String>, Error> {
-        
-
-        block_on(async { self.inner.read_manifest(id).await })
-            .map_err(|e| {
-                let ruby = Ruby::get().expect("Ruby runtime not available");
-                Error::new(ruby.exception_runtime_error(), format!("{}", e))
-            })
+        block_on(async { self.inner.read_manifest(id).await }).map_err(|e| {
+            let ruby = Ruby::get().expect("Ruby runtime not available");
+            Error::new(ruby.exception_runtime_error(), format!("{}", e))
+        })
     }
 
     /// List manifests within an optional [start, end) range as JSON.
@@ -81,8 +61,6 @@ impl Admin {
     /// # Returns
     /// JSON string containing a list of manifest metadata.
     pub fn list_manifests(&self, start: Option<u64>, end_id: Option<u64>) -> Result<String, Error> {
-        
-
         let range = match (start, end_id) {
             (Some(s), Some(e)) => s..e,
             (Some(s), None) => s..u64::MAX,
@@ -90,11 +68,10 @@ impl Admin {
             (None, None) => 0..u64::MAX,
         };
 
-        block_on(async { self.inner.list_manifests(range).await })
-            .map_err(|e| {
-                let ruby = Ruby::get().expect("Ruby runtime not available");
-                Error::new(ruby.exception_runtime_error(), format!("{}", e))
-            })
+        block_on(async { self.inner.list_manifests(range).await }).map_err(|e| {
+            let ruby = Ruby::get().expect("Ruby runtime not available");
+            Error::new(ruby.exception_runtime_error(), format!("{}", e))
+        })
     }
 
     /// Create a detached checkpoint.
@@ -126,7 +103,6 @@ impl Admin {
             name,
         };
 
-        
         let result = block_on(async { self.inner.create_detached_checkpoint(&options).await })
             .map_err(map_error)?;
 
@@ -146,8 +122,6 @@ impl Admin {
     /// # Returns
     /// Array of checkpoint hashes
     pub fn list_checkpoints(&self, name: Option<String>) -> Result<magnus::RArray, Error> {
-        
-
         let checkpoints = block_on(async { self.inner.list_checkpoints(name.as_deref()).await })
             .map_err(|e| {
                 let ruby = Ruby::get().expect("Ruby runtime not available");
@@ -184,7 +158,6 @@ impl Admin {
 
         let lifetime_duration = lifetime.map(std::time::Duration::from_millis);
 
-        
         block_on(async {
             self.inner
                 .refresh_checkpoint(checkpoint_uuid, lifetime_duration)
@@ -203,7 +176,6 @@ impl Admin {
         let checkpoint_uuid = uuid::Uuid::parse_str(&id)
             .map_err(|e| invalid_argument_error(&format!("invalid checkpoint UUID: {}", e)))?;
 
-        
         block_on(async { self.inner.delete_checkpoint(checkpoint_uuid).await })
             .map_err(map_error)?;
 
@@ -213,17 +185,69 @@ impl Admin {
     /// Run garbage collection once.
     ///
     /// # Arguments
-    /// * `_kwargs` - GC options (currently unused, uses defaults)
-    pub fn run_gc(&self, _kwargs: RHash) -> Result<(), Error> {
-        // Use default GC options - the structure is complex with nested directory options
-        let gc_opts = GarbageCollectorOptions::default();
+    /// * `kwargs` - GC options:
+    ///   - `min_age`: Minimum age in milliseconds for all directories (applies to manifest, wal, compacted)
+    ///   - `manifest_min_age`: Specific minimum age in milliseconds for manifest directory
+    ///   - `wal_min_age`: Specific minimum age in milliseconds for WAL directory
+    ///   - `compacted_min_age`: Specific minimum age in milliseconds for compacted directory
+    ///
+    /// If `min_age` is provided, it will be used for all directories unless a specific override is provided.
+    /// If no options are provided, defaults are used (manifest: 1 day, wal: 1 minute, compacted: 1 minute).
+    pub fn run_gc(&self, kwargs: RHash) -> Result<(), Error> {
+        use slatedb::config::GarbageCollectorDirectoryOptions;
 
-        
-        block_on(async { self.inner.run_gc_once(gc_opts).await })
-            .map_err(|e| {
-                let ruby = Ruby::get().expect("Ruby runtime not available");
-                Error::new(ruby.exception_runtime_error(), format!("{}", e))
-            })?;
+        // Extract options from kwargs
+        let min_age = get_optional::<u64>(&kwargs, "min_age")?;
+        let manifest_min_age = get_optional::<u64>(&kwargs, "manifest_min_age")?;
+        let wal_min_age = get_optional::<u64>(&kwargs, "wal_min_age")?;
+        let compacted_min_age = get_optional::<u64>(&kwargs, "compacted_min_age")?;
+
+        // Build GC options
+        let gc_opts = if min_age.is_none()
+            && manifest_min_age.is_none()
+            && wal_min_age.is_none()
+            && compacted_min_age.is_none()
+        {
+            // No options provided, use defaults
+            GarbageCollectorOptions::default()
+        } else {
+            let default_opts = GarbageCollectorOptions::default();
+
+            // Helper to create directory options with custom min_age
+            let make_dir_opts =
+                |specific_age: Option<u64>,
+                 fallback_age: Option<u64>,
+                 default_opts: Option<GarbageCollectorDirectoryOptions>| {
+                    let age_ms = specific_age.or(fallback_age);
+                    if let Some(ms) = age_ms {
+                        Some(GarbageCollectorDirectoryOptions {
+                            interval: default_opts.as_ref().and_then(|o| o.interval),
+                            min_age: std::time::Duration::from_millis(ms),
+                        })
+                    } else {
+                        default_opts
+                    }
+                };
+
+            GarbageCollectorOptions {
+                manifest_options: make_dir_opts(
+                    manifest_min_age,
+                    min_age,
+                    default_opts.manifest_options,
+                ),
+                wal_options: make_dir_opts(wal_min_age, min_age, default_opts.wal_options),
+                compacted_options: make_dir_opts(
+                    compacted_min_age,
+                    min_age,
+                    default_opts.compacted_options,
+                ),
+            }
+        };
+
+        block_on(async { self.inner.run_gc_once(gc_opts).await }).map_err(|e| {
+            let ruby = Ruby::get().expect("Ruby runtime not available");
+            Error::new(ruby.exception_runtime_error(), format!("{}", e))
+        })?;
 
         Ok(())
     }

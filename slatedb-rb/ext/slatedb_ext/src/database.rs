@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use magnus::prelude::*;
-use magnus::{function, method, Error, RHash, Ruby, TryConvert};
+use magnus::{function, method, Error, RHash, Ruby};
 use slatedb::config::{DurabilityLevel, PutOptions, ReadOptions, ScanOptions, Ttl, WriteOptions};
 use slatedb::object_store::memory::InMemory;
 use slatedb::{Db, IsolationLevel};
@@ -11,6 +11,7 @@ use crate::iterator::Iterator;
 use crate::runtime::block_on;
 use crate::snapshot::Snapshot;
 use crate::transaction::Transaction;
+use crate::utils::get_optional;
 use crate::write_batch::WriteBatch;
 
 /// Ruby wrapper for SlateDB database.
@@ -19,22 +20,6 @@ use crate::write_batch::WriteBatch;
 #[magnus::wrap(class = "SlateDb::Database", free_immediately, size)]
 pub struct Database {
     inner: Arc<Db>,
-}
-
-/// Helper to extract an optional value from an RHash
-fn get_optional<T: TryConvert>(hash: &RHash, key: &str) -> Result<Option<T>, Error> {
-    let ruby = Ruby::get().expect("Ruby runtime not available");
-    let sym = ruby.to_symbol(key);
-    match hash.get(sym) {
-        Some(val) => {
-            if val.is_nil() {
-                Ok(None)
-            } else {
-                Ok(Some(T::try_convert(val)?))
-            }
-        }
-        None => Ok(None),
-    }
 }
 
 impl Database {
@@ -167,7 +152,6 @@ impl Database {
             await_durable: true,
         };
 
-        
         block_on(async {
             self.inner
                 .put_with_options(key.as_bytes(), value.as_bytes(), &put_opts, &write_opts)
@@ -202,7 +186,6 @@ impl Database {
         let await_durable = get_optional::<bool>(&kwargs, "await_durable")?.unwrap_or(true);
         let write_opts = WriteOptions { await_durable };
 
-        
         block_on(async {
             self.inner
                 .put_with_options(key.as_bytes(), value.as_bytes(), &put_opts, &write_opts)
@@ -226,7 +209,6 @@ impl Database {
             await_durable: true,
         };
 
-        
         block_on(async {
             self.inner
                 .delete_with_options(key.as_bytes(), &write_opts)
@@ -250,7 +232,6 @@ impl Database {
         let await_durable = get_optional::<bool>(&kwargs, "await_durable")?.unwrap_or(true);
         let write_opts = WriteOptions { await_durable };
 
-        
         block_on(async {
             self.inner
                 .delete_with_options(key.as_bytes(), &write_opts)
@@ -275,7 +256,6 @@ impl Database {
         }
 
         let opts = ScanOptions::default();
-        
 
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
@@ -346,7 +326,6 @@ impl Database {
             opts.max_fetch_tasks = mft;
         }
 
-        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
@@ -366,11 +345,9 @@ impl Database {
     /// # Arguments
     /// * `batch` - The WriteBatch to write
     pub fn write(&self, batch: &WriteBatch) -> Result<(), Error> {
-        
         let batch_inner = batch.take()?;
 
-        block_on(async { self.inner.write(batch_inner).await })
-            .map_err(map_error)?;
+        block_on(async { self.inner.write(batch_inner).await }).map_err(map_error)?;
 
         Ok(())
     }
@@ -384,7 +361,6 @@ impl Database {
         let await_durable = get_optional::<bool>(&kwargs, "await_durable")?.unwrap_or(true);
         let write_opts = WriteOptions { await_durable };
 
-        
         let batch_inner = batch.take()?;
 
         block_on(async {
@@ -418,9 +394,7 @@ impl Database {
             }
         };
 
-        
-        let txn = block_on(async { self.inner.begin(isolation_level).await })
-            .map_err(map_error)?;
+        let txn = block_on(async { self.inner.begin(isolation_level).await }).map_err(map_error)?;
 
         Ok(Transaction::new(txn))
     }
@@ -430,26 +404,20 @@ impl Database {
     /// # Returns
     /// A new Snapshot instance
     pub fn snapshot(&self) -> Result<Snapshot, Error> {
-        
-        let snap = block_on(async { self.inner.snapshot().await })
-            .map_err(map_error)?;
+        let snap = block_on(async { self.inner.snapshot().await }).map_err(map_error)?;
 
         Ok(Snapshot::new(snap))
     }
 
     /// Flush the database to ensure durability.
     pub fn flush(&self) -> Result<(), Error> {
-        
-        block_on(async { self.inner.flush().await })
-            .map_err(map_error)?;
+        block_on(async { self.inner.flush().await }).map_err(map_error)?;
         Ok(())
     }
 
     /// Close the database.
     pub fn close(&self) -> Result<(), Error> {
-        
-        block_on(async { self.inner.close().await })
-            .map_err(map_error)?;
+        block_on(async { self.inner.close().await }).map_err(map_error)?;
         Ok(())
     }
 }

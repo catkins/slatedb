@@ -2,29 +2,14 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use magnus::prelude::*;
-use magnus::{method, Error, RHash, Ruby, TryConvert};
+use magnus::{method, Error, RHash, Ruby};
 use slatedb::config::{DurabilityLevel, ReadOptions, ScanOptions};
 use slatedb::DbSnapshot;
 
 use crate::errors::{closed_error, invalid_argument_error, map_error};
 use crate::iterator::Iterator;
 use crate::runtime::block_on;
-
-/// Helper to extract an optional value from an RHash
-fn get_optional<T: TryConvert>(hash: &RHash, key: &str) -> Result<Option<T>, Error> {
-    let ruby = Ruby::get().expect("Ruby runtime not available");
-    let sym = ruby.to_symbol(key);
-    match hash.get(sym) {
-        Some(val) => {
-            if val.is_nil() {
-                Ok(None)
-            } else {
-                Ok(Some(T::try_convert(val)?))
-            }
-        }
-        None => Ok(None),
-    }
-}
+use crate::utils::get_optional;
 
 /// Ruby wrapper for SlateDB Snapshot.
 ///
@@ -54,9 +39,7 @@ impl Snapshot {
             .as_ref()
             .ok_or_else(|| closed_error("snapshot is closed"))?;
 
-        
-        let result = block_on(async { snapshot.get(key.as_bytes()).await })
-            .map_err(map_error)?;
+        let result = block_on(async { snapshot.get(key.as_bytes()).await }).map_err(map_error)?;
 
         Ok(result.map(|b| String::from_utf8_lossy(&b).to_string()))
     }
@@ -95,7 +78,6 @@ impl Snapshot {
             .as_ref()
             .ok_or_else(|| closed_error("snapshot is closed"))?;
 
-        
         let result = block_on(async { snapshot.get_with_options(key.as_bytes(), &opts).await })
             .map_err(map_error)?;
 
@@ -113,7 +95,6 @@ impl Snapshot {
             .as_ref()
             .ok_or_else(|| closed_error("snapshot is closed"))?;
 
-        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
@@ -175,7 +156,6 @@ impl Snapshot {
             .as_ref()
             .ok_or_else(|| closed_error("snapshot is closed"))?;
 
-        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 

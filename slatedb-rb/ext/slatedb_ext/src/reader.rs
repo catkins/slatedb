@@ -1,29 +1,14 @@
 use std::sync::Arc;
 
 use magnus::prelude::*;
-use magnus::{function, method, Error, RHash, Ruby, TryConvert};
+use magnus::{function, method, Error, RHash, Ruby};
 use slatedb::config::{DbReaderOptions, DurabilityLevel, ReadOptions, ScanOptions};
 use slatedb::DbReader;
 
 use crate::errors::{invalid_argument_error, map_error};
 use crate::iterator::Iterator;
 use crate::runtime::block_on;
-
-/// Helper to extract an optional value from an RHash
-fn get_optional<T: TryConvert>(hash: &RHash, key: &str) -> Result<Option<T>, Error> {
-    let ruby = Ruby::get().expect("Ruby runtime not available");
-    let sym = ruby.to_symbol(key);
-    match hash.get(sym) {
-        Some(val) => {
-            if val.is_nil() {
-                Ok(None)
-            } else {
-                Ok(Some(T::try_convert(val)?))
-            }
-        }
-        None => Ok(None),
-    }
-}
+use crate::utils::get_optional;
 
 /// Ruby wrapper for SlateDB Reader.
 ///
@@ -48,8 +33,6 @@ impl Reader {
         checkpoint_id: Option<String>,
         kwargs: RHash,
     ) -> Result<Self, Error> {
-        
-
         // Parse options
         let manifest_poll_interval = get_optional::<u64>(&kwargs, "manifest_poll_interval")?
             .map(std::time::Duration::from_millis);
@@ -101,9 +84,7 @@ impl Reader {
             return Err(invalid_argument_error("key cannot be empty"));
         }
 
-        
-        let result = block_on(async { self.inner.get(key.as_bytes()).await })
-            .map_err(map_error)?;
+        let result = block_on(async { self.inner.get(key.as_bytes()).await }).map_err(map_error)?;
 
         Ok(result.map(|b| String::from_utf8_lossy(&b).to_string()))
     }
@@ -137,7 +118,6 @@ impl Reader {
             opts.cache_blocks = cache_blocks;
         }
 
-        
         let result = block_on(async { self.inner.get_with_options(key.as_bytes(), &opts).await })
             .map_err(map_error)?;
 
@@ -150,9 +130,7 @@ impl Reader {
             return Err(invalid_argument_error("key cannot be empty"));
         }
 
-        
-        let result = block_on(async { self.inner.get(key.as_bytes()).await })
-            .map_err(map_error)?;
+        let result = block_on(async { self.inner.get(key.as_bytes()).await }).map_err(map_error)?;
 
         Ok(result.map(|b| b.to_vec()))
     }
@@ -163,7 +141,6 @@ impl Reader {
             return Err(invalid_argument_error("start key cannot be empty"));
         }
 
-        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
@@ -220,7 +197,6 @@ impl Reader {
             opts.max_fetch_tasks = mft;
         }
 
-        
         let start_bytes = start.into_bytes();
         let end_bytes = end_key.map(|e| e.into_bytes());
 
@@ -237,9 +213,7 @@ impl Reader {
 
     /// Close the reader.
     pub fn close(&self) -> Result<(), Error> {
-        
-        block_on(async { self.inner.close().await })
-            .map_err(map_error)?;
+        block_on(async { self.inner.close().await }).map_err(map_error)?;
         Ok(())
     }
 }

@@ -1,27 +1,12 @@
 use std::cell::RefCell;
 
 use magnus::prelude::*;
-use magnus::{function, method, Error, RHash, Ruby, TryConvert};
+use magnus::{function, method, Error, RHash, Ruby};
 use slatedb::config::{PutOptions, Ttl};
 use slatedb::WriteBatch as SlateWriteBatch;
 
 use crate::errors::invalid_argument_error;
-
-/// Helper to extract an optional value from an RHash
-fn get_optional<T: TryConvert>(hash: &RHash, key: &str) -> Result<Option<T>, Error> {
-    let ruby = Ruby::get().expect("Ruby runtime not available");
-    let sym = ruby.to_symbol(key);
-    match hash.get(sym) {
-        Some(val) => {
-            if val.is_nil() {
-                Ok(None)
-            } else {
-                Ok(Some(T::try_convert(val)?))
-            }
-        }
-        None => Ok(None),
-    }
-}
+use crate::utils::get_optional;
 
 /// Ruby wrapper for SlateDB WriteBatch.
 ///

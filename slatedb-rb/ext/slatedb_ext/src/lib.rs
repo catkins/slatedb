@@ -24,6 +24,7 @@ mod reader;
 mod runtime;
 mod snapshot;
 mod transaction;
+mod utils;
 mod write_batch;
 
 /// Initialize the SlateDb Ruby module.
