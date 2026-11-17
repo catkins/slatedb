@@ -1,0 +1,132 @@
+name: Publish Release (UniFFI)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "The version of the release (e.g., 1.0.0)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version of the existing release (e.g., 1.0.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify version
+        uses: matt-usurp/validate-semver@v2
+        with:
+          version: ${{ inputs.version }}
+
+      - name: Verify release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: gh release view "v${VERSION}"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: verify-version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            library: libslatedb_uniffi.so
+          - os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            library: libslatedb_uniffi.so
+          - os: macos-15
+            target: x86_64-apple-darwin
+            library: libslatedb_uniffi.dylib
+          - os: macos-15
+            target: aarch64-apple-darwin
+            library: libslatedb_uniffi.dylib
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            library: slatedb_uniffi.dll
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            library: slatedb_uniffi.dll
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux cross-compile toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> "$GITHUB_ENV"
+          echo "AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: Build shared library
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build -p slatedb-uniffi --release --locked --target "$TARGET"
+
+      - name: Package shared library
+        env:
+          VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
+          LIBRARY: ${{ matrix.library }}
+        run: |
+          mkdir -p dist
+          cp "target/${TARGET}/release/${LIBRARY}" LICENSE dist/
+          tar -czf "slatedb-uniffi-v${VERSION}-${TARGET}.tar.gz" -C dist "$LIBRARY" LICENSE
+
+      - name: Upload shared library archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: uniffi-${{ matrix.target }}
+          path: slatedb-uniffi-v${{ inputs.version }}-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Attach libraries to GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download shared library archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: uniffi-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum *.tar.gz > SHA256SUMS
+
+      - name: Upload release assets
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: gh release upload "v${VERSION}" *.tar.gz SHA256SUMS --clobber
