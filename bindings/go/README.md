@@ -31,6 +31,36 @@ By default, the runtime uses the host's available parallelism. Set
 `DbBuilder.Build()` or `DbReaderBuilder.Build()` call to override the worker
 thread count for the lifetime of the process.
 
+### Prebuilt shared libraries
+
+Releases published with the UniFFI release workflow include shared libraries for Linux (glibc),
+macOS, and Windows on x86-64 and ARM64. Download the library version that matches your Go module
+version from [GitHub releases](https://github.com/slatedb/slatedb/releases).
+`go get` does not download or install these libraries.
+
+For Linux x86-64, use the following commands. Replace `X.Y.Z` with your Go module version.
+Use `aarch64-unknown-linux-gnu` for Linux ARM64.
+
+```bash
+VERSION=X.Y.Z
+TARGET=x86_64-unknown-linux-gnu
+ARCHIVE="slatedb-uniffi-v${VERSION}-${TARGET}.tar.gz"
+
+gh release download "v${VERSION}" --repo slatedb/slatedb \
+  --pattern "$ARCHIVE" --pattern SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+mkdir -p slatedb-native
+tar -xzf "$ARCHIVE" -C slatedb-native
+
+export CGO_LDFLAGS="-L$(pwd)/slatedb-native ${CGO_LDFLAGS:-}"
+export LD_LIBRARY_PATH="$(pwd)/slatedb-native:${LD_LIBRARY_PATH:-}"
+```
+
+These variables let the C linker and runtime loader find the library when you build and run Go code.
+Linux archives require a glibc-based system compatible with Ubuntu 22.04; they do not support Alpine
+Linux. On macOS, use the matching `apple-darwin` archive and set `DYLD_LIBRARY_PATH` instead.
+On Windows, extract the matching `pc-windows-msvc` archive and add its directory to `PATH`.
+
 ## Quick Start
 
 ```go

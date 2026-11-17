@@ -38,6 +38,29 @@ To create a patch release for an existing version:
 
 ### Bindings
 
+#### UniFFI shared libraries
+
+The main release workflow calls `.github/workflows/uniffi.yaml` after it publishes the Rust release.
+This workflow builds the exact `vX.Y.Z` tag and attaches these archives to the existing GitHub release:
+
+- `slatedb-uniffi-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz`
+- `slatedb-uniffi-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz`
+- `slatedb-uniffi-vX.Y.Z-x86_64-apple-darwin.tar.gz`
+- `slatedb-uniffi-vX.Y.Z-aarch64-apple-darwin.tar.gz`
+- `slatedb-uniffi-vX.Y.Z-x86_64-pc-windows-msvc.tar.gz`
+- `slatedb-uniffi-vX.Y.Z-aarch64-pc-windows-msvc.tar.gz`
+
+Each archive contains the shared library and `LICENSE`. The release also includes `SHA256SUMS` for all
+six archives. Linux builds use glibc on Ubuntu 22.04. They do not support musl-based systems such as
+Alpine Linux.
+
+To publish libraries for an existing release, run the UniFFI workflow manually with its version.
+Select a workflow ref that includes `uniffi.yaml`. The workflow checks out `vX.Y.Z`, not the selected
+branch, and replaces matching assets when you rerun it.
+
+To test without publishing, select `dry-run`. This mode requires the version tag but not a GitHub
+release. Download the `uniffi-release-assets` workflow artifact to inspect the archives and checksums.
+
 #### Python Bindings
 
 SlateDB Python bindings are published using a Github release action defined in `.github/workflows/python.yml`. To create a new release:
