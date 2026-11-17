@@ -58,6 +58,9 @@ To publish libraries for an existing release, run the UniFFI workflow manually w
 Select a workflow ref that includes `uniffi.yaml`. The workflow checks out `vX.Y.Z`, not the selected
 branch, and replaces matching assets when you rerun it.
 
+To test without publishing, select `dry-run`. This mode requires the version tag but not a GitHub
+release. Download the `uniffi-release-assets` workflow artifact to inspect the archives and checksums.
+
 #### Python Bindings
 
 SlateDB Python bindings are published using a Github release action defined in `.github/workflows/python.yml`. To create a new release:
