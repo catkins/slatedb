@@ -1,0 +1,18 @@
+name: Test UniFFI release workflow
+
+on:
+  push:
+    branches:
+      - test-uniffi-release-assets
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    uses: ./.github/workflows/uniffi.yaml
+    permissions:
+      contents: write
+    with:
+      version: "0.18.1"
+      dry-run: true
